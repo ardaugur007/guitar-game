@@ -4,21 +4,25 @@ import numpy as np
 import aubio
 import random
 import sys
+import math
 
 # --- AYARLAR ---
 BUFFER_SIZE = 1024
-CHANNELS = 2          # Focusrite için Stereo şart
-RATE = 48000          # <--- DEĞİŞİKLİK BURADA: 44100 yerine 48000 yaptık.
+CHANNELS = 2          # Focusrite için Stereo
+RATE = 48000          # Focusrite için 48k
 PITCH_METHOD = "default"
 TOLERANCE = 0.8
-VOLUME_THRESH = 0.0001 # Algılamayı kolaylaştırmak için eşiği iyice düşürdük
+VOLUME_THRESH = 0.0001 # Hassas ayar
 
-# Renkler
-WHITE = (255, 255, 255)
-BLACK = (20, 20, 20)
-RED = (255, 60, 60)
-GREEN = (50, 255, 80)
-BLUE = (60, 60, 255)
+# --- NEON RENK PALETİ ---
+BG_COLOR_TOP = (5, 5, 15)      # Arka plan üst kısım
+BG_COLOR_BOTTOM = (20, 10, 30) # Arka plan alt kısım
+WHITE = (220, 220, 255)
+NEON_RED = (255, 50, 80)       # Diyezler (Daha canlı)
+NEON_BLUE = (0, 180, 255)      # Bemoller (Cyber mavi)
+NEON_GREEN = (50, 255, 100)    # Skor/Vuruş
+NEON_PURPLE = (180, 0, 255)    # Oyuncu Gemisi
+YELLOW = (255, 230, 50)        # Duyulan nota
 
 # --- MÜZİK TEORİSİ ---
 STANDARD_NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
@@ -36,39 +40,72 @@ def hz_to_note(pitch):
 pygame.init()
 WIDTH, HEIGHT = 900, 700
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Guitar Shooter: Focusrite Edition")
-font = pygame.font.SysFont("Arial", 40, bold=True)
-debug_font = pygame.font.SysFont("Consolas", 18) # Hata ayıklama için küçük font
+pygame.display.set_caption("Cyber Guitar Shooter")
+
+# Fontları büyütüp güzelleştirdik
+font_large = pygame.font.SysFont("Arial Black", 60) 
+font_medium = pygame.font.SysFont("Arial", 28, bold=True)
+font_small = pygame.font.SysFont("Consolas", 16)
 clock = pygame.time.Clock()
 
-p = pyaudio.PyAudio()
-
 # --- SES GİRİŞİ ---
+p = pyaudio.PyAudio()
 try:
-    # ID 8'i deniyoruz
-    stream = p.open(format=pyaudio.paFloat32,
-                    channels=CHANNELS,
-                    rate=RATE,
-                    input=True,
-                    input_device_index=8, 
-                    frames_per_buffer=BUFFER_SIZE)
-except Exception as e:
-    print(f"ID 8 Hata: {e}, ID 44 deneniyor...")
-    try:
-        stream = p.open(format=pyaudio.paFloat32,
-                        channels=CHANNELS,
-                        rate=RATE,
-                        input=True,
-                        input_device_index=44,
-                        frames_per_buffer=BUFFER_SIZE)
-    except Exception as e2:
-        print(f"Ses kartı açılamadı: {e2}")
+    stream = p.open(format=pyaudio.paFloat32, channels=CHANNELS, rate=RATE, input=True, input_device_index=8, frames_per_buffer=BUFFER_SIZE)
+except Exception:
+    try: # Yedek olarak ID 44 veya varsayılanı dener
+        stream = p.open(format=pyaudio.paFloat32, channels=CHANNELS, rate=RATE, input=True, input_device_index=44, frames_per_buffer=BUFFER_SIZE)
+    except: 
+        print("Ses kartı başlatılamadı!")
         sys.exit()
 
-# Aubio Ayarı
 p_detect = aubio.pitch(PITCH_METHOD, BUFFER_SIZE * 2, BUFFER_SIZE, RATE)
 p_detect.set_unit("Hz")
 p_detect.set_tolerance(TOLERANCE)
+
+# --- GÖRSEL SINIFLAR VE FONKSİYONLAR ---
+
+class LaserBeam:
+    """Vuruş anında çıkan lazer efekti"""
+    def __init__(self, start_pos, end_pos, color):
+        self.start_pos = start_pos
+        self.end_pos = end_pos
+        self.color = color
+        self.life = 15 # Lazerin ekranda kalma süresi (frame)
+        self.max_life = 15
+        self.width = 10
+
+    def draw(self):
+        if self.life > 0:
+            # Lazer gittikçe incelir ve saydamlaşır
+            progress = self.life / self.max_life
+            current_width = int(self.width * progress)
+            
+            # Ana ışın
+            pygame.draw.line(screen, self.color, self.start_pos, self.end_pos, current_width)
+            # İçindeki beyaz parlaklık (çekirdek)
+            if current_width > 2:
+                pygame.draw.line(screen, WHITE, self.start_pos, self.end_pos, current_width // 3)
+            
+            # Hedefteki patlama noktası
+            pygame.draw.circle(screen, WHITE, self.end_pos, (current_width + 5))
+            
+            self.life -= 1
+
+def draw_player(x, y):
+    """Oyuncuyu stilize bir gitar/uzay gemisi gibi çizer"""
+    # 1. Dış Hâle (Glow)
+    pygame.draw.polygon(screen, (100, 0, 150), [(x, y-55), (x-35, y+35), (x+35, y+35)], 0)
+    
+    # 2. Ana Gövde (Mor Üçgen)
+    points = [(x, y-50), (x-30, y+30), (x+30, y+30)]
+    pygame.draw.polygon(screen, NEON_PURPLE, points, 0)
+    
+    # 3. İç Detay (Beyaz çizgi - Tel gibi)
+    pygame.draw.line(screen, WHITE, (x, y-40), (x, y+25), 3)
+    
+    # 4. Kenar Çizgileri (Neon etkisi)
+    pygame.draw.polygon(screen, (200, 100, 255), points, 3)
 
 class Enemy:
     def __init__(self):
@@ -76,26 +113,63 @@ class Enemy:
         self.real_note = ENHARMONIC_MAP.get(self.display_note, self.display_note)
         self.x = random.randint(50, WIDTH - 100)
         self.y = -60
-        self.speed = 2
-        self.radius = 35
-        self.color = BLUE if "b" in self.display_note else RED
+        self.speed = 2.0 
+        self.radius = 40
+        self.color = NEON_BLUE if "b" in self.display_note else NEON_RED
+        self.pulse = random.random() * 10 # Rastgele başlangıç fazı
 
-    def move(self): self.y += self.speed
+    def move(self):
+        self.y += self.speed
+        self.pulse += 0.1 # Renk animasyonu için
+
     def draw(self):
-        pygame.draw.circle(screen, self.color, (self.x, int(self.y)), self.radius)
-        text = font.render(self.display_note, True, WHITE)
-        text_rect = text.get_rect(center=(self.x, int(self.y)))
-        screen.blit(text, text_rect)
+        # Daire yerine "Gitar Penası" (Pick) şekli çizimi
+        # Penalar yuvarlatılmış üçgene benzer.
+        
+        # Penanın 3 ana köşesi
+        p1 = (self.x - self.radius, self.y - self.radius * 0.5) # Sol üst
+        p2 = (self.x + self.radius, self.y - self.radius * 0.5) # Sağ üst
+        p3 = (self.x, self.y + self.radius * 1.2)               # Alt uç
+        
+        # Renk animasyonu (Hafif yanıp sönme)
+        pulse_val = (math.sin(self.pulse) + 1) / 2 # 0 ile 1 arası
+        # Rengi biraz açıp koyulaştırıyoruz
+        r = min(255, self.color[0] + pulse_val * 40)
+        g = min(255, self.color[1] + pulse_val * 40)
+        b = min(255, self.color[2] + pulse_val * 40)
+        current_color = (r, g, b)
 
+        # Penayı çiz
+        pygame.draw.polygon(screen, current_color, [p1, p2, p3])
+        # Beyaz çerçeve (Outline)
+        pygame.draw.polygon(screen, WHITE, [p1, p2, p3], 3)
+
+        # Nota Yazısı
+        text_surf = font_medium.render(self.display_note, True, WHITE)
+        # Yazıya hafif gölge
+        shadow_surf = font_medium.render(self.display_note, True, (0,0,0))
+        
+        text_rect = text_surf.get_rect(center=(self.x, self.y))
+        screen.blit(shadow_surf, (text_rect.x + 2, text_rect.y + 2))
+        screen.blit(text_surf, text_rect)
+
+# --- OYUN DEĞİŞKENLERİ ---
 enemies = []
+lasers = [] 
 spawn_timer = 0
 score = 0
+player_pos = (WIDTH // 2, HEIGHT - 50) 
 running = True
 
-print("Oyun Başladı! Gitarını çal...")
+print("Cyber Guitar Shooter Başlatıldı! Rock on!")
 
 while running:
-    screen.fill(BLACK)
+    # --- ARKA PLAN (Gradyan) ---
+    # Performans için basit bir dikdörtgen değil, dikey çizgilerle gradyan
+    # (Bu işlemi her karede yapmak yorabilir, basitçe fill yapıp üzerine bir shape de atabiliriz)
+    screen.fill(BG_COLOR_TOP)
+    # Alt kısma hafif morluk katalım
+    pygame.draw.rect(screen, BG_COLOR_BOTTOM, (0, HEIGHT//2, WIDTH, HEIGHT//2))
     
     current_note_detected = None
     debug_volume = 0.0
@@ -105,37 +179,26 @@ while running:
     try:
         audio_data = stream.read(BUFFER_SIZE, exception_on_overflow=False)
         samples = np.frombuffer(audio_data, dtype=np.float32)
-        
-        # --- KRİTİK NOKTA: STEREO'DAN MONO'YA ÇEVİRME ---
-        # --- YENİ YÖNTEM: MIX (KARIŞTIRMA) ---
         if CHANNELS == 2:
-            # Sol ve Sağ kanalı toplayıp ikiye bölüyoruz.
-            # Böylece gitar 1'de de olsa 2'de de olsa ses gelir.
-            left = samples[0::2]
-            right = samples[1::2]
-            # Boyut eşitlemesi (bazen 1 frame eksik gelebilir)
+            left = samples[0::2]; right = samples[1::2]
             min_len = min(len(left), len(right))
             samples = (left[:min_len] + right[:min_len]) / 2
         
-        # Bu işlemden sonra veriyi aubio'ya veriyoruz
         pitch = p_detect(samples)[0]
         volume = np.sum(samples**2) / len(samples)
-        
-        debug_volume = volume
-        debug_pitch = pitch
+        debug_volume = volume; debug_pitch = pitch
         
         if volume > VOLUME_THRESH:
             current_note_detected = hz_to_note(pitch)
             
-    except Exception as e:
-        pass
+    except: pass
 
-    # --- OYUN DÖNGÜSÜ ---
+    # --- OYUN MANTIĞI ---
     for event in pygame.event.get():
         if event.type == pygame.QUIT: running = False
 
     spawn_timer += 1
-    if spawn_timer > 80:
+    if spawn_timer > 90: # Düşman gelme sıklığı
         enemies.append(Enemy())
         spawn_timer = 0
 
@@ -143,38 +206,61 @@ while running:
     if current_note_detected:
         for enemy in enemies:
             if enemy.real_note == current_note_detected:
+                # VURUŞ!
+                # Lazer ekle
+                lasers.append(LaserBeam(player_pos, (enemy.x, enemy.y), enemy.color))
+                
+                # Patlama Efekti (Basit daireler)
+                pygame.draw.circle(screen, WHITE, (enemy.x, int(enemy.y)), 60)
+                
                 enemies.remove(enemy)
                 score += 1
                 hit_happened = True
-                pygame.draw.circle(screen, GREEN, (enemy.x, int(enemy.y)), 60, 5)
                 break 
 
+    # --- ÇİZİMLER ---
+    
+    # 1. Oyuncu
+    draw_player(player_pos[0], player_pos[1])
+
+    # 2. Düşmanlar
     for enemy in enemies:
         enemy.move()
         enemy.draw()
-        if enemy.y > HEIGHT:
+        if enemy.y > HEIGHT + 50:
             enemies.remove(enemy)
-            score = max(0, score - 1)
+            score = max(0, score - 5)
 
-    # --- UI & DEBUG PANELİ ---
-    
-    # Nota Bilgisi
-    ui_color = GREEN if hit_happened else WHITE
-    screen.blit(font.render(f"Nota: {current_note_detected if current_note_detected else '---'}", True, ui_color), (20, HEIGHT - 100))
-    
-    # Skor
-    screen.blit(font.render(f"Skor: {score}", True, WHITE), (WIDTH - 200, HEIGHT - 100))
+    # 3. Lazerler
+    for laser in lasers:
+        laser.draw()
+    lasers = [l for l in lasers if l.life > 0] # Süresi bitenleri temizle
 
-    # --- TEKNİK DETAYLAR (Sol Alt Köşe) ---
-    # Burası sorunu çözmemiz için çok önemli. Ses gelip gelmediğini buradan göreceğiz.
-    vol_text = f"Ses Gücü: {debug_volume:.5f}" 
-    pitch_text = f"Frekans: {debug_pitch:.1f} Hz"
+    # --- ARAYÜZ (UI) ---
     
-    # Eğer ses gücü çok düşükse Kırmızı, iyiyse Yeşil yazı
-    vol_color = RED if debug_volume < VOLUME_THRESH else GREEN
+    # Skor Paneli (Üst Orta)
+    score_text = font_large.render(str(score), True, NEON_GREEN)
+    screen.blit(score_text, (WIDTH//2 - score_text.get_width()//2, 10))
+    screen.blit(font_small.render("SKOR", True, WHITE), (WIDTH//2 - 20, 70))
+
+    # Duyulan Nota (Sol Alt - Büyük Gösterge)
+    if hit_happened:
+        indicator_color = NEON_GREEN
+        pygame.draw.circle(screen, (0, 50, 0), (80, HEIGHT-80), 55) # Arka plan halkası
+    else:
+        indicator_color = YELLOW
     
-    screen.blit(debug_font.render(vol_text, True, vol_color), (20, HEIGHT - 60))
-    screen.blit(debug_font.render(pitch_text, True, WHITE), (20, HEIGHT - 30))
+    note_str = current_note_detected if current_note_detected else "--"
+    note_surf = font_large.render(note_str, True, indicator_color)
+    
+    # Notayı ekrana bas
+    screen.blit(note_surf, (80 - note_surf.get_width()//2, HEIGHT - 110))
+    screen.blit(font_small.render("DUYULAN", True, WHITE), (50, HEIGHT - 40))
+
+    # Debug (Sağ Alt - Çok küçük)
+    vol_c = NEON_RED if debug_volume < VOLUME_THRESH else NEON_GREEN
+    screen.blit(font_small.render(f"Vol: {debug_volume:.4f}", True, vol_c), (WIDTH - 150, HEIGHT - 40))
+    screen.blit(font_small.render(f"Hz: {debug_pitch:.1f}", True, WHITE), (WIDTH - 150, HEIGHT - 20))
 
     pygame.display.flip()
     clock.tick(60)
