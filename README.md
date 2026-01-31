@@ -1,4 +1,4 @@
-<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/a41c9abf-f662-452c-b9b6-5135e32419a2" /># 🎸 Guitar Sniper: Audio-Reactive Python Game (V5)
+# 🎸 Guitar Sniper: Audio-Reactive Python Game (V5)
 
 > **A real-time reflex game controlled by an actual electric guitar, built with Python and DSP techniques.**
 
